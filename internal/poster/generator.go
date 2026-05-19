@@ -23,13 +23,16 @@ import (
 	"github-badges-backend/internal/user"
 )
 
-// Canvas dimensions match the standard Open Graph image ratio.
+/* canvasW and canvasH matches the standard Open Graph image ratio. */
 const (
 	canvasW = 1200
 	canvasH = 630
 )
 
-// GitHub dark mode colour palette.
+/**
+ * TODO: add light as well
+ */
+/* GitHub dark mode colour palette. */
 var (
 	colBG      = hexRGB("#0D1117")
 	colSurface = hexRGB("#161B22")
@@ -42,23 +45,36 @@ var (
 	colRed     = hexRGB("#F85149")
 )
 
-// Generator renders a PNG poster for a user's monthly GitHub activity.
+var (
+	fontSmall        float64 = 7
+	fontRegularSmall float64 = 9
+	fondMedium       float64 = 11
+	fontLarge        float64 = 22
+	fontExtraLarge   float64 = 28
+)
+
 type Generator struct {
-	boldSM  font.Face // ~20px — card labels, footer
-	boldMD  font.Face // ~32px — profile name, header label
-	boldLG  font.Face // ~52px — stat numbers
-	boldXL  font.Face // ~64px — month header
-	regSM   font.Face // ~20px — profile username
-	httpCli *http.Client
+	boldSM     font.Face /* ~20px — card labels, footer */
+	boldMD     font.Face /* ~32px — profile name, header label */
+	boldLG     font.Face /* ~52px — stat numbers */
+	boldXL     font.Face /* ~64px — month header */
+	regSM      font.Face /* ~20px — profile username */
+	httpClient *http.Client
 }
 
-// NewGenerator initialises the Generator, loading embedded Go fonts.
+type CardData struct {
+	label    string
+	value    string
+	subtitle string
+	accent   color.Color
+}
+
 func NewGenerator() (*Generator, error) {
-	bf, err := truetype.Parse(gobold.TTF)
+	boldFont, err := truetype.Parse(gobold.TTF)
 	if err != nil {
 		return nil, fmt.Errorf("parsing bold font: %w", err)
 	}
-	rf, err := truetype.Parse(goregular.TTF)
+	regularFont, err := truetype.Parse(goregular.TTF)
 	if err != nil {
 		return nil, fmt.Errorf("parsing regular font: %w", err)
 	}
@@ -72,139 +88,134 @@ func NewGenerator() (*Generator, error) {
 	}
 
 	return &Generator{
-		boldSM:  face(bf, 7),
-		boldMD:  face(bf, 11),
-		boldLG:  face(bf, 22),
-		boldXL:  face(bf, 28),
-		regSM:   face(rf, 9),
-		httpCli: &http.Client{Timeout: 5 * time.Second},
+		boldSM:     face(boldFont, fontSmall),
+		boldMD:     face(boldFont, fondMedium),
+		boldLG:     face(boldFont, fontLarge),
+		boldXL:     face(boldFont, fontExtraLarge),
+		regSM:      face(regularFont, fontRegularSmall),
+		httpClient: &http.Client{Timeout: 5 * time.Second},
 	}, nil
 }
 
-// Generate renders the PNG poster and returns the raw bytes.
 func (g *Generator) Generate(u *user.User, st *stats.MonthlyStats) ([]byte, error) {
 	dc := gg.NewContext(canvasW, canvasH)
 
-	// ── Background ──────────────────────────────────────────────────────────
+	/* Background */
 	dc.SetColor(colBG)
 	dc.Clear()
 
-	// Top accent bar
+	/* Top accent bar */
 	dc.SetColor(colGreen)
 	dc.DrawRectangle(0, 0, canvasW, 8)
 	dc.Fill()
 
-	// ── Header ──────────────────────────────────────────────────────────────
+	/* Header - title section */
 	dc.SetFontFace(g.boldSM)
 	setColor(dc, colGreen)
 	dc.DrawString("GITHUB ACTIVITY REPORT", 60, 50)
 
+	/* Header - month section */
 	dc.SetFontFace(g.boldXL)
 	setColor(dc, colText)
 	dc.DrawString(st.StatMonth.Format("January 2006"), 60, 110)
 
-	// Right-side username
+	/* Header - right side username */
 	dc.SetFontFace(g.boldMD)
 	setColor(dc, colMuted)
 	dc.DrawStringAnchored("@"+u.GithubLogin, canvasW-60, 50, 1, 0.5)
 
+	/* Header - right side poweredby */
 	dc.SetFontFace(g.regSM)
 	setColor(dc, colMuted)
 	dc.DrawStringAnchored("Powered by GitHub Badges", canvasW-60, 75, 1, 0.5)
 
-	// Divider
-	setColor(dc, colBorder)
+	/* Divider */
+	dc.SetColor(colBorder)
 	dc.SetLineWidth(1)
 	dc.DrawLine(60, 140, canvasW-60, 140)
 	dc.Stroke()
 
-	// ── Profile ──────────────────────────────────────────────────────────────
+	/* Profile */
 	const (
-		avatarCX = 105
-		avatarCY = 205
-		avatarR  = 48
+		avatarRadius  = 70
+		avatarCenterX = 60 + (avatarRadius)
+		avatarCenterY = 240
 	)
 
-	// Green glow border
-	dc.SetColor(colGreen)
-	dc.DrawCircle(avatarCX, avatarCY, avatarR+4)
-	dc.Fill()
-
-	// Avatar image (or fallback initials)
-	avatar, err := g.downloadAvatar(u.AvatarURL, avatarR*2)
+	avatar, err := g.downloadAvatar(u.AvatarURL, avatarRadius*2)
 	if err == nil {
-		dc.Push()
-		dc.DrawCircle(avatarCX, avatarCY, avatarR)
+		/* render profile pic */
+		dc.DrawCircle(avatarCenterX, avatarCenterY, avatarRadius)
 		dc.Clip()
-		dc.DrawImageAnchored(avatar, avatarCX, avatarCY, 0.5, 0.5)
-		dc.Pop()
+		dc.DrawImageAnchored(avatar, avatarCenterX, avatarCenterY, 0.5, 0.5)
+		dc.ResetClip()
 	} else {
-		// Fallback: filled circle + initials
+		/* fallback using username initials */
 		dc.SetColor(colSurface)
-		dc.DrawCircle(avatarCX, avatarCY, avatarR)
+		dc.DrawCircle(avatarCenterX, avatarCenterY, avatarRadius)
 		dc.Fill()
 		dc.SetFontFace(g.boldLG)
 		setColor(dc, colText)
-		dc.DrawStringAnchored(initials(u.Name, u.GithubLogin), avatarCX, avatarCY, 0.5, 0.5)
+		dc.DrawStringAnchored(initials(u.Name, u.GithubLogin), avatarCenterX, avatarCenterY, 0.5, 0.5)
 	}
 
-	// Name + login
+	/* Name & login */
+	const (
+		nameX = 60 + avatarRadius*2 + 60
+		nameY = 240 - avatarRadius/2
+
+		loginX = 60 + avatarRadius*2 + 60
+		loginY = 240 - avatarRadius/2 + 30
+	)
 	dc.SetFontFace(g.boldMD)
-	setColor(dc, colText)
+	dc.SetColor(colText)
 	displayName := u.Name
 	if displayName == "" {
 		displayName = u.GithubLogin
 	}
-	dc.DrawString(displayName, 185, 185)
+	dc.DrawString(displayName, nameX, nameY)
 
 	dc.SetFontFace(g.regSM)
 	setColor(dc, colMuted)
-	dc.DrawString("@"+u.GithubLogin, 185, 215)
+	dc.DrawString("@"+u.GithubLogin, loginX, loginY)
 
-	// ── Stat Cards ───────────────────────────────────────────────────────────
+	/* Stat Cards */
 	const (
-		cardY = 265
-		cardH = 185
-		cardW = 255
+		cardY = 345
+		cardH = 200
+		cardW = 200
 		gap   = 20
 	)
 
-	type cardData struct {
-		label    string
-		value    string
-		subtitle string
-		accent   color.Color
-	}
-
-	pctStr, pctPositive := formatPct(st.CommitPctChange)
+	pctStr, pctPositive := formatPercentageCommit(st.CommitPctChange)
 	pctAccent := colGreen
 	if !pctPositive {
 		pctAccent = colRed
 	}
 
-	cards := []cardData{
+	cards := []CardData{
 		{
 			label:    "COMMITS",
 			value:    formatComma(st.TotalCommits),
-			subtitle: "this month",
+			subtitle: st.StatMonth.Format("January 2006"),
 			accent:   colBlue,
 		},
 		{
 			label:    "NEW REPOS",
 			value:    formatComma(st.ReposCreated),
-			subtitle: "created this month",
+			subtitle: fmt.Sprintf("Created: %s", st.StatMonth.Format("01 2006")),
 			accent:   colGreen,
 		},
 		{
 			label:    "OSS CONTRIBUTIONS",
 			value:    formatComma(st.OpenSourceContributions),
-			subtitle: "PRs to other projects",
+			subtitle: fmt.Sprintf("OSS: %s", st.StatMonth.Format("01 2006")),
 			accent:   colAmber,
 		},
 		{
 			label:    "COMMIT GROWTH",
 			value:    pctStr,
-			subtitle: "vs. previous month",
+			subtitle: "Vs. previous month",
 			accent:   pctAccent,
 		},
 	}
@@ -215,18 +226,18 @@ func (g *Generator) Generate(u *user.User, st *stats.MonthlyStats) ([]byte, erro
 		g.drawCard(dc, cx, cardY, cardW, cardH, card.label, card.value, card.subtitle, card.accent)
 	}
 
-	// ── Footer ───────────────────────────────────────────────────────────────
+	/* Footer */
 	setColor(dc, colBorder)
 	dc.SetLineWidth(1)
-	dc.DrawLine(60, 480, canvasW-60, 480)
+	dc.DrawLine(60, 570, canvasW-60, 570)
 	dc.Stroke()
 
 	dc.SetFontFace(g.boldSM)
 	setColor(dc, colMuted)
-	dc.DrawString("github-badges · Monthly Activity Report", 60, 510)
+	dc.DrawString("github-badges · Monthly Activity Report", 60, 600)
 	dc.DrawStringAnchored(
 		fmt.Sprintf("Generated %s", time.Now().UTC().Format("2 Jan 2006")),
-		canvasW-60, 510, 1, 0.5,
+		canvasW-60, 600, 1, 0.5,
 	)
 
 	var buf bytes.Buffer
@@ -236,46 +247,46 @@ func (g *Generator) Generate(u *user.User, st *stats.MonthlyStats) ([]byte, erro
 	return buf.Bytes(), nil
 }
 
-// drawCard renders a single stat card onto the drawing context.
+/**
+ * drawCard renders a single stat card onto the drawing context.
+ */
 func (g *Generator) drawCard(dc *gg.Context, x, y, w, h float64, label, value, subtitle string, accent color.Color) {
-	// Border
+	/* Border */
 	dc.SetColor(colBorder)
 	dc.DrawRoundedRectangle(x-1, y-1, w+2, h+2, 13)
 	dc.Fill()
 
-	// Background
+	/* Background */
 	dc.SetColor(colSurface)
 	dc.DrawRoundedRectangle(x, y, w, h, 12)
 	dc.Fill()
 
-	// Top accent stripe (clip to card shape first)
-	dc.Push()
+	/* Top accent stripe (clip to card shape first) */
 	dc.DrawRoundedRectangle(x, y, w, h, 12)
 	dc.Clip()
 	dc.SetColor(accent)
 	dc.DrawRectangle(x, y, w, 4)
 	dc.Fill()
-	dc.Pop()
+	dc.ResetClip()
 
-	// Label
+	/* Label */
 	dc.SetFontFace(g.boldSM)
 	setColor(dc, colMuted)
 	dc.DrawString(label, x+16, y+32)
 
-	// Value (large, centered, accent-coloured)
+	/* Value */
 	dc.SetFontFace(g.boldLG)
 	dc.SetColor(accent)
 	dc.DrawStringAnchored(value, x+w/2, y+105, 0.5, 0.5)
 
-	// Subtitle
+	/* Subtitle */
 	dc.SetFontFace(g.regSM)
 	setColor(dc, colMuted)
 	dc.DrawStringAnchored(subtitle, x+w/2, y+152, 0.5, 0.5)
 }
 
-// downloadAvatar fetches the GitHub avatar URL and scales it to size×size pixels.
 func (g *Generator) downloadAvatar(avatarURL string, size int) (image.Image, error) {
-	resp, err := g.httpCli.Get(avatarURL)
+	resp, err := g.httpClient.Get(avatarURL)
 	if err != nil {
 		return nil, err
 	}
@@ -291,20 +302,26 @@ func (g *Generator) downloadAvatar(avatarURL string, size int) (image.Image, err
 	return dst, nil
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
+/**
+ * Helpers
+ */
 func setColor(dc *gg.Context, c color.Color) {
 	dc.SetColor(c)
 }
 
 func hexRGB(hex string) color.RGBA {
-	hex = hex[1:] // strip '#'
-	r, _ := strconv.ParseUint(hex[0:2], 16, 8)
-	gr, _ := strconv.ParseUint(hex[2:4], 16, 8)
-	b, _ := strconv.ParseUint(hex[4:6], 16, 8)
-	return color.RGBA{R: uint8(r), G: uint8(gr), B: uint8(b), A: 255}
+	hex = hex[1:] /* strip '#' */
+
+	red, _ := strconv.ParseUint(hex[0:2], 16, 8)
+	green, _ := strconv.ParseUint(hex[2:4], 16, 8)
+	blue, _ := strconv.ParseUint(hex[4:6], 16, 8)
+
+	return color.RGBA{R: uint8(red), G: uint8(green), B: uint8(blue), A: 255}
 }
 
+/**
+ * TODO: can use Indian comma system here
+ */
 func formatComma(n int) string {
 	if n == 0 {
 		return "0"
@@ -327,9 +344,9 @@ func formatComma(n int) string {
 	return string(out)
 }
 
-func formatPct(v sql.NullFloat64) (string, bool) {
+func formatPercentageCommit(v sql.NullFloat64) (string, bool) {
 	if !v.Valid {
-		return "First Month", true
+		return "--", true
 	}
 	val := v.Float64
 	if val >= 0 {
@@ -348,10 +365,10 @@ func initials(name, login string) string {
 		return "?"
 	}
 	if len(parts) == 1 {
-		return string(parts[0:1])
+		return string(parts[0])
 	}
-	// Take first char of each word (max 2)
-	runes := []rune{}
+
+	chars := []rune{}
 	inWord := false
 	for _, r := range parts {
 		if r == ' ' {
@@ -359,12 +376,12 @@ func initials(name, login string) string {
 			continue
 		}
 		if !inWord {
-			runes = append(runes, r)
+			chars = append(chars, r)
 			inWord = true
 		}
-		if len(runes) == 2 {
+		if len(chars) == 2 {
 			break
 		}
 	}
-	return string(runes)
+	return string(chars)
 }

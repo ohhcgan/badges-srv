@@ -1,0 +1,15 @@
+.claude
+.vscode
+
+bin/
+
+.env
+.env.*
+.gitignore
+.dockerignore
+Dockerfile*
+Makefile
+
+.git/
+*.md
+*.DS_Store

@@ -4,10 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
@@ -76,19 +78,27 @@ func NewHandler(conf *config.Config, userStore *user.Store, logger *zap.Logger) 
 /**
  * HandleLogin redirects the browser to GitHub's OAuth consent page.
  */
-func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) HandleLogin(ctx *gin.Context) {
 	state, err := randomString(stateLength)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Something unexpected happened",
+			"success": false,
+			"data":    nil,
+			"error": gin.H{
+				"message": "Something unexpected happened",
+				"code":    "INTERNAL_SERVER_ERROR",
+			},
+		})
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
+	ctx.SetCookieData(&http.Cookie{
 		Name:     stateCookieName,
 		Value:    state,
 		MaxAge:   stateMaxAge,
 		Path:     "/",
-		Secure:   r.TLS != nil,
+		Secure:   ctx.Request.TLS != nil,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 
@@ -98,27 +108,43 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 
 	githubAuthServUrl := h.oauthConfig.AuthCodeURL(state)
-	http.Redirect(w, r, githubAuthServUrl, http.StatusTemporaryRedirect)
+	ctx.Redirect(http.StatusTemporaryRedirect, githubAuthServUrl)
 }
 
 /**
  * HandleCallback handles the GitHub redirect after the user grants (or denies) access.
  */
-func (h *AuthHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
-	stateCookie, err := r.Cookie(stateCookieName)
-	if err != nil {
-		http.Error(w, "invalid oauth state", http.StatusBadRequest)
+func (h *AuthHandler) HandleCallback(ctx *gin.Context) {
+	stateCookie, err := ctx.Cookie(stateCookieName)
+	if err != nil || strings.TrimSpace(stateCookie) == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "invalid oauth state",
+			"success": false,
+			"data":    nil,
+			"error": gin.H{
+				"message": "invalid oauth state",
+				"code":    "BAD_REQUEST",
+			},
+		})
 		return
 	}
 
-	code := r.URL.Query().Get("code")
-	state := r.URL.Query().Get("state")
-	if stateCookie.Value != state {
-		http.Error(w, "invalid oauth state", http.StatusBadRequest)
+	code := ctx.Request.URL.Query().Get("code")
+	state := ctx.Request.URL.Query().Get("state")
+	if stateCookie != state {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "invalid oauth state",
+			"success": false,
+			"data":    nil,
+			"error": gin.H{
+				"message": "invalid oauth state",
+				"code":    "BAD_REQUEST",
+			},
+		})
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
+	ctx.SetCookieData(&http.Cookie{
 		Name:   stateCookieName,
 		Value:  "",
 		Path:   "/",
@@ -126,35 +152,75 @@ func (h *AuthHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if code == "" {
-		http.Error(w, "missing oauth code", http.StatusBadRequest)
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "missing oauth code",
+			"success": false,
+			"data":    nil,
+			"error": gin.H{
+				"message": "missing oauth code",
+				"code":    "BAD_REQUEST",
+			},
+		})
 		return
 	}
 
-	token, err := h.oauthConfig.Exchange(r.Context(), code)
+	token, err := h.oauthConfig.Exchange(ctx.Request.Context(), code)
 	if err != nil {
 		h.logger.Error("oauth token exchange failed", zap.Error(err))
-		http.Error(w, "token exchange failed", http.StatusBadGateway)
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"message": "token exchange failed",
+			"success": false,
+			"data":    nil,
+			"error": gin.H{
+				"message": "token exchange failed",
+				"code":    "BAD_GATEWAY",
+			},
+		})
 		return
 	}
 
-	githubID, login, name, email, avatarURL, err := githubClient.UserInfo(r.Context(), token.AccessToken)
+	githubID, login, name, email, avatarURL, err := githubClient.UserInfo(ctx.Request.Context(), token.AccessToken)
 
 	if err != nil {
 		h.logger.Error("failed to fetch github user info", zap.Error(err))
-		http.Error(w, "could not fetch github profile", http.StatusBadGateway)
+		ctx.JSON(http.StatusBadGateway, gin.H{
+			"message": "could not fetch github profile",
+			"success": false,
+			"data":    nil,
+			"error": gin.H{
+				"message": "could not fetch github profile",
+				"code":    "BAD_GATEWAY",
+			},
+		})
 		return
 	}
 
 	tokenJSON, err := json.Marshal(token)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "something unexpected happened",
+			"success": false,
+			"data":    nil,
+			"error": gin.H{
+				"message": "something unexpected happened",
+				"code":    "INTERNAL_SERVER_ERROR",
+			},
+		})
 		return
 	}
 
 	encToken, err := crypto.Encrypt(h.cryptoKey, tokenJSON)
 	if err != nil {
 		h.logger.Error("token encryption failed", zap.Error(err))
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "something unexpected happened",
+			"success": false,
+			"data":    nil,
+			"error": gin.H{
+				"message": "something unexpected happened",
+				"code":    "INTERNAL_SERVER_ERROR",
+			},
+		})
 		return
 	}
 
@@ -167,42 +233,58 @@ func (h *AuthHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		EncryptedToken: encToken,
 	}
 
-	if err := h.userStore.Upsert(r.Context(), u); err != nil {
+	if err := h.userStore.Upsert(ctx.Request.Context(), u); err != nil {
 		h.logger.Error("user upsert failed", zap.Error(err), zap.String("login", login))
-		http.Error(w, "database error", http.StatusInternalServerError)
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{
+			"message": "service temporary unavailable",
+			"success": false,
+			"data":    nil,
+			"error": gin.H{
+				"message": "service temporary unavailable",
+				"code":    "SERVICE_TEMP_UNAVAILABLE",
+			},
+		})
 		return
 	}
 
 	sessionToken, err := h.generateJWT(u)
 	if err != nil {
 		h.logger.Error("jwt generation failed", zap.Error(err))
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "something unexpected happened",
+			"success": false,
+			"data":    nil,
+			"error": gin.H{
+				"message": "something unexpected happened",
+				"code":    "INTERNAL_SERVER_ERROR",
+			},
+		})
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
+	ctx.SetCookieData(&http.Cookie{
 		Name:     sessionCookieName,
 		Value:    sessionToken,
 		MaxAge:   sessionMaxAge,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
+		Secure:   ctx.Request.TLS != nil,
 		Path:     "/",
 	})
 
 	h.logger.Info("user logged in", zap.String("login", login), zap.String("user_id", u.ID))
-	http.Redirect(w, r, h.frontendURL, http.StatusTemporaryRedirect)
+	ctx.Redirect(http.StatusTemporaryRedirect, h.frontendURL)
 }
 
-func (h *AuthHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
+func (h *AuthHandler) HandleLogout(ctx *gin.Context) {
+	ctx.SetCookieData(&http.Cookie{
 		Name:   sessionCookieName,
 		Value:  "",
 		MaxAge: -1,
 		Path:   "/",
 	})
 
-	http.Redirect(w, r, h.frontendURL, http.StatusTemporaryRedirect)
+	ctx.Redirect(http.StatusTemporaryRedirect, h.frontendURL)
 }
 
 func (h *AuthHandler) generateJWT(u *user.User) (string, error) {

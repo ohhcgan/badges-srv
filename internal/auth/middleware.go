@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -39,53 +40,78 @@ func (h *AuthHandler) ValidateSession(r *http.Request) (*JWTPayload, error) {
 /**
  * Main authentication middleware
  */
-func (h *AuthHandler) RequireAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			payload, err := h.ValidateSession(r)
+func (h *AuthHandler) RequireAuth(ctx *gin.Context) {
+	payload, err := h.ValidateSession(ctx.Request)
 
-			if err != nil {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-				return
-			}
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"data":    nil,
+			"message": "unauthorized",
+			"error": gin.H{
+				"message": "unauthorized",
+				"code":    "UNAUTHORIZED",
+			},
+		})
+		return
+	}
 
-			//
-			// TODO: uncomment
-			//
-			// userID, err := uuid.Parse(payload.UserID)
-			// if err != nil {
-			// 	http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-			// 	return
-			// }
-			//
+	//
+	// TODO: uncomment
+	//
+	// userID, err := uuid.Parse(payload.UserID)
+	// if err != nil {
+	// 	ctx.JSON(http.StatusUnauthorized, gin.H{
+	// 		"success": false,
+	// 		"data":    nil,
+	// 		"message": "unauthorized",
+	// 		"error": gin.H{
+	// 			"message": "unauthorized",
+	// 			"code":    "UNAUTHORIZED",
+	// 		},
+	// 	})
+	// 	return
+	// }
+	//
 
-			ctx := r.Context()
-			ctx = context.WithValue(ctx, ContextKeyUserID, payload.UserID)
-			ctx = context.WithValue(ctx, ContextKeyLogin, payload.GithubLogin)
+	ctx.Set(ContextKeyUserID, payload.UserID)
+	ctx.Set(ContextKeyLogin, payload.GithubLogin)
 
-			next.ServeHTTP(w, r.WithContext(ctx))
-		},
-	)
+	ctx.Next()
 }
 
 /**
  * Main admin authentication middleware
  */
-func RequireAdmin(adminKey string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if adminKey == "" {
-				http.NotFound(w, r)
-				return
-			}
+func RequireAdmin(adminKey string) func(*gin.Context) {
+	return func(ctx *gin.Context) {
+		if adminKey == "" {
+			ctx.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"data":    nil,
+				"message": "404 page not found",
+				"error": gin.H{
+					"message": "404 page not found",
+					"code":    "NOT_FOUND",
+				},
+			})
+			return
+		}
 
-			if r.Header.Get("X-Admin-Key") != adminKey {
-				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
-				return
-			}
+		if ctx.GetHeader("X-Admin-Key") != adminKey {
+			ctx.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"data":    nil,
+				"message": "forbidden",
+				"error": gin.H{
+					"message": "forbidden",
+					"code":    "FORBIDDEN",
+				},
+			})
+			return
+		}
 
-			next.ServeHTTP(w, r)
-		})
+		ctx.Next()
 	}
 }
 

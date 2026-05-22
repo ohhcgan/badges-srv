@@ -253,3 +253,15 @@ func GetTargetMonth(year, month string) (time.Time, error) {
 	}
 	return targetMonth, nil
 }
+
+func (h *Controllers) NoRoute(ctx *gin.Context) {
+	ctx.JSON(http.StatusNotFound, gin.H{
+		"message": "404 not found",
+		"success": false,
+		"data":    nil,
+		"error": gin.H{
+			"message": "404 not found",
+			"code":    "NOT_FOUND",
+		},
+	})
+}

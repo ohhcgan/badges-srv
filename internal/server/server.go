@@ -25,7 +25,8 @@ func New(
 	cont *controllers.Controllers,
 	logger *zap.Logger,
 ) *http.Server {
-	routerMux := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
+	routerMux := gin.New()
 
 	routerMux.Use(RequestLogger(logger))
 	routerMux.Use(middlewares.CorsMiddleware([]string{cfg.FrontendURL}))
@@ -42,12 +43,14 @@ func New(
 	apiGroup.GET("/stats", cont.GetStats)
 	apiGroup.GET("/stats/history", cont.GetStatsHistory)
 
-	adminGroup := apiGroup.Group("/admin")
+	adminGroup := routerMux.Group("/api/admin")
 	adminGroup.Use(auth.RequireAdmin(cfg.AdminKey))
 	/** TODO:
 	 * Make it a cron job or a cron job triggers this api
 	 */
 	adminGroup.POST("/trigger-monthly", cont.TriggerMonthly)
+
+	routerMux.NoRoute(cont.NoRoute)
 
 	return &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Port),
@@ -69,7 +72,7 @@ func RequestLogger(logger *zap.Logger) func(*gin.Context) {
 		logger.Info("http request",
 			zap.String("method", ctx.Request.Method),
 			zap.String("path", ctx.Request.URL.Path),
-			zap.Int("status", ctx.Request.Response.StatusCode),
+			zap.Int("status", ctx.Writer.Status()),
 			zap.Duration("duration", time.Since(start)),
 			zap.String("remote", ctx.Request.RemoteAddr),
 		)

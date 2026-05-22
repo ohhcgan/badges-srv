@@ -1,34 +1,34 @@
 package middlewares
 
-import "net/http"
+import (
+	"net/http"
 
-func CorsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	"github.com/gin-gonic/gin"
+)
+
+func CorsMiddleware(allowedOrigins []string) func(*gin.Context) {
 	allowed := make(map[string]bool)
 	for _, origin := range allowedOrigins {
 		allowed[origin] = true
 	}
 
-	return func(next http.Handler) http.Handler {
+	return func(ctx *gin.Context) {
+		origin := ctx.GetHeader("Origin")
 
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if allowed[origin] {
+			ctx.Header("Access-Control-Allow-Origin", origin)
+		}
 
-			origin := r.Header.Get("Origin")
+		ctx.Header("Vary", "Origin")
+		ctx.Header("Access-Control-Allow-Credentials", "true")
+		ctx.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		ctx.Header("Access-Control-Allow-Headers", "Content-Type, X-Admin-Key")
 
-			if allowed[origin] {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-			}
+		if ctx.Request.Method == http.MethodOptions {
+			ctx.Writer.WriteHeader(http.StatusNoContent)
+			return
+		}
 
-			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Admin-Key")
-
-			if r.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-
-			next.ServeHTTP(w, r)
-		})
+		ctx.Next()
 	}
 }

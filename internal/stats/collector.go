@@ -71,6 +71,7 @@ func (c *Collector) CollectForUser(ctx context.Context, u *user.User, month time
 	prevStats, err := c.statsStore.FindByUserAndMonth(ctx, u.ID, prevMonth)
 
 	if err != nil && errors.Is(err, ErrNotFound) {
+		prevStats = &MonthlyStats{}
 		prevStats.TotalCommits = 0
 		prevStats.ReposCreated = 0
 		prevStats.OpenSourceContributions = 0

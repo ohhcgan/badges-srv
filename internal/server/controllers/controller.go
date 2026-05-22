@@ -1,13 +1,12 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github-badges-backend/internal/auth"
@@ -39,74 +38,132 @@ func NewControllers(
 /**
  * Controllers
  */
-func (h *Controllers) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	/**
-	 * TODO: move to gin, and remove writeJson function.
-	 */
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+func (h *Controllers) HealthCheck(ctx *gin.Context) {
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "ok",
+		"success": true,
+		"data":    nil,
+		"error":   nil,
+	})
 }
 
-func (h *Controllers) GetMe(w http.ResponseWriter, r *http.Request) {
-	userID, _ := auth.UserIDFromContext(r.Context())
+func (h *Controllers) GetMe(ctx *gin.Context) {
+	userID, _ := auth.UserIDFromContext(ctx.Request.Context())
 
-	u, err := h.userStore.FindByID(r.Context(), userID)
+	u, err := h.userStore.FindByID(ctx.Request.Context(), userID)
 	if errors.Is(err, user.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "user not found")
+		ctx.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"data":    nil,
+			"message": "user not found",
+			"error": gin.H{
+				"message": "user not found",
+				"code":    "NOT_FOUND",
+			},
+		})
 		return
 	}
 
 	if err != nil {
 		h.logger.Error("get user info query failed", zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "internal error")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"data":    nil,
+			"message": "something unexpected happened",
+			"error": gin.H{
+				"message": "something unexpected happened",
+				"code":    "INTERNAL_SERVER_ERROR",
+			},
+		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"id":         u.ID,
-		"github_id":  u.GithubID,
-		"login":      u.GithubLogin,
-		"name":       u.Name,
-		"email":      u.Email,
-		"avatar_url": u.AvatarURL,
-		"created_at": u.CreatedAt,
+	ctx.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"id":         u.ID,
+			"github_id":  u.GithubID,
+			"login":      u.GithubLogin,
+			"name":       u.Name,
+			"email":      u.Email,
+			"avatar_url": u.AvatarURL,
+			"created_at": u.CreatedAt,
+		},
+		"message": "user fetched",
+		"error":   nil,
 	})
 }
 
-func (h *Controllers) GetStats(w http.ResponseWriter, r *http.Request) {
-	userID, _ := auth.UserIDFromContext(r.Context())
+func (h *Controllers) GetStats(ctx *gin.Context) {
+	userID, _ := auth.UserIDFromContext(ctx.Request.Context())
 
-	year := r.URL.Query().Get("year")
-	month := r.URL.Query().Get("month")
+	year := ctx.Request.URL.Query().Get("year")
+	month := ctx.Request.URL.Query().Get("month")
 
 	targetMonth, err := GetTargetMonth(year, month)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid year or month")
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "invalid year or month",
+			"data":    nil,
+			"error": gin.H{
+				"message": "invalid year or month",
+				"code":    "BAD_REQUEST",
+			},
+		})
 		return
 	}
 
-	st, err := h.statsStore.FindByUserAndMonth(r.Context(), userID, targetMonth)
+	st, err := h.statsStore.FindByUserAndMonth(ctx.Request.Context(), userID, targetMonth)
 	if errors.Is(err, stats.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "no stats for this month yet")
+		ctx.JSON(http.StatusNotFound, gin.H{
+			"success": true,
+			"message": "no stats for this month yet",
+			"data":    nil,
+			"error":   nil,
+		})
 		return
 	}
+
 	if err != nil {
 		h.logger.Error("get stats query failed", zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "internal error")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "something unexpected happened",
+			"data":    nil,
+			"error": gin.H{
+				"message": "something unexpected happened",
+				"code":    "INTERNAL_SERVER_ERROR",
+			},
+		})
 		return
 	}
 
 	resp := statsResponse(st)
-	writeJSON(w, http.StatusOK, resp)
+	ctx.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "fetched",
+		"data":    resp,
+		"error":   nil,
+	})
 }
 
-func (h *Controllers) GetStatsHistory(w http.ResponseWriter, r *http.Request) {
-	userID, _ := auth.UserIDFromContext(r.Context())
+func (h *Controllers) GetStatsHistory(ctx *gin.Context) {
+	userID, _ := auth.UserIDFromContext(ctx.Request.Context())
 
 	monthsNum := 12
-	list, err := h.statsStore.ListForUser(r.Context(), userID, monthsNum)
+	list, err := h.statsStore.ListForUser(ctx.Request.Context(), userID, monthsNum)
 	if err != nil {
 		h.logger.Error("get stats history query failed", zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "internal error")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "something unexpected happened",
+			"data":    nil,
+			"error": gin.H{
+				"message": "something unexpected happened",
+				"code":    "INTERNAL_SERVER_ERROR",
+			},
+		})
 		return
 	}
 
@@ -114,24 +171,43 @@ func (h *Controllers) GetStatsHistory(w http.ResponseWriter, r *http.Request) {
 	for _, st := range list {
 		result = append(result, statsResponse(st))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"history": result})
+	ctx.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "history fetched",
+		"data":    gin.H{"history": result},
+		"error":   nil,
+	})
 }
 
-func (h *Controllers) TriggerMonthly(w http.ResponseWriter, r *http.Request) {
+func (h *Controllers) TriggerMonthly(ctx *gin.Context) {
 	if h.monthlyJobFn == nil {
-		writeError(w, http.StatusServiceUnavailable, "job not available")
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{
+			"message": "job not available",
+			"success": false,
+			"data":    nil,
+			"error": gin.H{
+				"message": "job not available",
+				"code":    "SERVICE_TEMP_UNAVAILABLE",
+			},
+		})
 		return
 	}
 
 	go h.monthlyJobFn()
-	writeJSON(w, http.StatusAccepted, map[string]string{"status": "job started"})
+
+	ctx.JSON(http.StatusAccepted, gin.H{
+		"message": "job started",
+		"success": true,
+		"data":    nil,
+		"error":   nil,
+	})
 }
 
 /**
  * Helpers
  */
 func statsResponse(st *stats.MonthlyStats) map[string]any {
-	resp := map[string]any{
+	resp := gin.H{
 		"id":                        st.ID,
 		"user_id":                   st.UserID,
 		"month":                     st.StatMonth.Format("2006-01"),
@@ -146,18 +222,6 @@ func statsResponse(st *stats.MonthlyStats) map[string]any {
 		resp["commit_pct_change"] = nil
 	}
 	return resp
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		fmt.Printf("error writingJson: %v\n", err)
-	}
-}
-
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
 }
 
 func GetTargetMonth(year, month string) (time.Time, error) {
@@ -188,4 +252,16 @@ func GetTargetMonth(year, month string) (time.Time, error) {
 		targetMonth = time.Date(now.Year()-yearOffset, now.Month()-monthOffset, 1, 0, 0, 0, 0, time.UTC)
 	}
 	return targetMonth, nil
+}
+
+func (h *Controllers) NoRoute(ctx *gin.Context) {
+	ctx.JSON(http.StatusNotFound, gin.H{
+		"message": "404 not found",
+		"success": false,
+		"data":    nil,
+		"error": gin.H{
+			"message": "404 not found",
+			"code":    "NOT_FOUND",
+		},
+	})
 }

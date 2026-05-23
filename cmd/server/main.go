@@ -56,7 +56,14 @@ func main() {
 func run(logger *zap.Logger, cfg *config.Config) error {
 	ctx := context.Background()
 
-	pool, err := database.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := database.NewPool(ctx, cfg.DatabaseURL, &database.DBConfig{
+		MinConns:              2,
+		MaxConns:              20,
+		MaxConnIdleTime:       30 * time.Minute,
+		MaxConnLifetime:       time.Hour,
+		HealthCheckPeriod:     time.Minute,
+		MaxConnLifetimeJitter: time.Minute,
+	})
 	if err != nil {
 		return fmt.Errorf("connecting to database: %w", err)
 	}

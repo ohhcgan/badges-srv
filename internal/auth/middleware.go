@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github-badges-backend/pkg/dto"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -44,13 +45,13 @@ func (h *AuthHandler) RequireAuth(ctx *gin.Context) {
 	payload, err := h.ValidateSession(ctx.Request)
 
 	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"data":    nil,
-			"message": "unauthorized",
-			"error": gin.H{
-				"message": "unauthorized",
-				"code":    "UNAUTHORIZED",
+		ctx.JSON(http.StatusUnauthorized, dto.Response[any]{
+			Success: false,
+			Data:    nil,
+			Message: "unauthorized",
+			Error: &dto.ErrorResponse{
+				Message: "unauthorized",
+				Code:    dto.UNAUTHORIZED,
 			},
 		})
 		return
@@ -61,11 +62,11 @@ func (h *AuthHandler) RequireAuth(ctx *gin.Context) {
 	//
 	// userID, err := uuid.Parse(payload.UserID)
 	// if err != nil {
-	// 	ctx.JSON(http.StatusUnauthorized, gin.H{
-	// 		"success": false,
-	// 		"data":    nil,
-	// 		"message": "unauthorized",
-	// 		"error": gin.H{
+	// 	ctx.JSON(http.StatusUnauthorized, dto.Response[any]{
+	// 		Success: false,
+	// 		Data:    nil,
+	// 		Message: "unauthorized",
+	// 		Error: &dto.ErrorResponse{
 	// 			"message": "unauthorized",
 	// 			"code":    "UNAUTHORIZED",
 	// 		},
@@ -86,26 +87,26 @@ func (h *AuthHandler) RequireAuth(ctx *gin.Context) {
 func RequireAdmin(adminKey string) func(*gin.Context) {
 	return func(ctx *gin.Context) {
 		if adminKey == "" {
-			ctx.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"data":    nil,
-				"message": "404 page not found",
-				"error": gin.H{
-					"message": "404 page not found",
-					"code":    "NOT_FOUND",
+			ctx.JSON(http.StatusNotFound, dto.Response[any]{
+				Success: false,
+				Data:    nil,
+				Message: "page not found",
+				Error: &dto.ErrorResponse{
+					Message: "page not found",
+					Code:    dto.NOT_FOUND,
 				},
 			})
 			return
 		}
 
 		if ctx.GetHeader("X-Admin-Key") != adminKey {
-			ctx.JSON(http.StatusForbidden, gin.H{
-				"success": false,
-				"data":    nil,
-				"message": "forbidden",
-				"error": gin.H{
-					"message": "forbidden",
-					"code":    "FORBIDDEN",
+			ctx.JSON(http.StatusForbidden, dto.Response[any]{
+				Success: false,
+				Data:    nil,
+				Message: "forbidden",
+				Error: &dto.ErrorResponse{
+					Message: "forbidden",
+					Code:    dto.FORBIDDEN,
 				},
 			})
 			return

@@ -19,6 +19,7 @@ import (
 	"github-badges-backend/internal/crypto"
 	githubClient "github-badges-backend/internal/github"
 	"github-badges-backend/internal/user"
+	"github-badges-backend/pkg/dto"
 )
 
 const (
@@ -81,13 +82,13 @@ func NewHandler(conf *config.Config, userStore *user.Store, logger *zap.Logger) 
 func (h *AuthHandler) HandleLogin(ctx *gin.Context) {
 	state, err := randomString(stateLength)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "Something unexpected happened",
-			"success": false,
-			"data":    nil,
-			"error": gin.H{
-				"message": "Something unexpected happened",
-				"code":    "INTERNAL_SERVER_ERROR",
+		ctx.JSON(http.StatusInternalServerError, dto.Response[any]{
+			Message: "Something unexpected happened",
+			Success: false,
+			Data:    nil,
+			Error: &dto.ErrorResponse{
+				Message: "Something unexpected happened",
+				Code:    dto.INTERNAL_SERVER_ERROR,
 			},
 		})
 		return
@@ -117,13 +118,13 @@ func (h *AuthHandler) HandleLogin(ctx *gin.Context) {
 func (h *AuthHandler) HandleCallback(ctx *gin.Context) {
 	stateCookie, err := ctx.Cookie(stateCookieName)
 	if err != nil || strings.TrimSpace(stateCookie) == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "invalid oauth state",
-			"success": false,
-			"data":    nil,
-			"error": gin.H{
-				"message": "invalid oauth state",
-				"code":    "BAD_REQUEST",
+		ctx.JSON(http.StatusBadRequest, dto.Response[any]{
+			Message: "invalid oauth state",
+			Success: false,
+			Data:    nil,
+			Error: &dto.ErrorResponse{
+				Message: "invalid oauth state",
+				Code:    dto.BAD_REQUEST,
 			},
 		})
 		return
@@ -132,13 +133,13 @@ func (h *AuthHandler) HandleCallback(ctx *gin.Context) {
 	code := ctx.Request.URL.Query().Get("code")
 	state := ctx.Request.URL.Query().Get("state")
 	if stateCookie != state {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "invalid oauth state",
-			"success": false,
-			"data":    nil,
-			"error": gin.H{
-				"message": "invalid oauth state",
-				"code":    "BAD_REQUEST",
+		ctx.JSON(http.StatusBadRequest, dto.Response[any]{
+			Message: "invalid oauth state",
+			Success: false,
+			Data:    nil,
+			Error: &dto.ErrorResponse{
+				Message: "invalid oauth state",
+				Code:    dto.BAD_REQUEST,
 			},
 		})
 		return
@@ -152,13 +153,13 @@ func (h *AuthHandler) HandleCallback(ctx *gin.Context) {
 	})
 
 	if code == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "missing oauth code",
-			"success": false,
-			"data":    nil,
-			"error": gin.H{
-				"message": "missing oauth code",
-				"code":    "BAD_REQUEST",
+		ctx.JSON(http.StatusBadRequest, dto.Response[any]{
+			Message: "missing oauth code",
+			Success: false,
+			Data:    nil,
+			Error: &dto.ErrorResponse{
+				Message: "missing oauth code",
+				Code:    dto.BAD_REQUEST,
 			},
 		})
 		return
@@ -167,13 +168,13 @@ func (h *AuthHandler) HandleCallback(ctx *gin.Context) {
 	token, err := h.oauthConfig.Exchange(ctx.Request.Context(), code)
 	if err != nil {
 		h.logger.Error("oauth token exchange failed", zap.Error(err))
-		ctx.JSON(http.StatusBadGateway, gin.H{
-			"message": "token exchange failed",
-			"success": false,
-			"data":    nil,
-			"error": gin.H{
-				"message": "token exchange failed",
-				"code":    "BAD_GATEWAY",
+		ctx.JSON(http.StatusBadGateway, dto.Response[any]{
+			Message: "token exchange failed",
+			Success: false,
+			Data:    nil,
+			Error: &dto.ErrorResponse{
+				Message: "token exchange failed",
+				Code:    dto.BAD_GATEWAY,
 			},
 		})
 		return
@@ -183,13 +184,13 @@ func (h *AuthHandler) HandleCallback(ctx *gin.Context) {
 
 	if err != nil {
 		h.logger.Error("failed to fetch github user info", zap.Error(err))
-		ctx.JSON(http.StatusBadGateway, gin.H{
-			"message": "could not fetch github profile",
-			"success": false,
-			"data":    nil,
-			"error": gin.H{
-				"message": "could not fetch github profile",
-				"code":    "BAD_GATEWAY",
+		ctx.JSON(http.StatusBadGateway, dto.Response[any]{
+			Message: "could not fetch github profile",
+			Success: false,
+			Data:    nil,
+			Error: &dto.ErrorResponse{
+				Message: "could not fetch github profile",
+				Code:    dto.BAD_GATEWAY,
 			},
 		})
 		return
@@ -197,13 +198,13 @@ func (h *AuthHandler) HandleCallback(ctx *gin.Context) {
 
 	tokenJSON, err := json.Marshal(token)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "something unexpected happened",
-			"success": false,
-			"data":    nil,
-			"error": gin.H{
-				"message": "something unexpected happened",
-				"code":    "INTERNAL_SERVER_ERROR",
+		ctx.JSON(http.StatusInternalServerError, dto.Response[any]{
+			Message: "something unexpected happened",
+			Success: false,
+			Data:    nil,
+			Error: &dto.ErrorResponse{
+				Message: "something unexpected happened",
+				Code:    dto.INTERNAL_SERVER_ERROR,
 			},
 		})
 		return
@@ -212,13 +213,13 @@ func (h *AuthHandler) HandleCallback(ctx *gin.Context) {
 	encToken, err := crypto.Encrypt(h.cryptoKey, tokenJSON)
 	if err != nil {
 		h.logger.Error("token encryption failed", zap.Error(err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "something unexpected happened",
-			"success": false,
-			"data":    nil,
-			"error": gin.H{
-				"message": "something unexpected happened",
-				"code":    "INTERNAL_SERVER_ERROR",
+		ctx.JSON(http.StatusInternalServerError, dto.Response[any]{
+			Message: "something unexpected happened",
+			Success: false,
+			Data:    nil,
+			Error: &dto.ErrorResponse{
+				Message: "something unexpected happened",
+				Code:    dto.INTERNAL_SERVER_ERROR,
 			},
 		})
 		return
@@ -235,13 +236,13 @@ func (h *AuthHandler) HandleCallback(ctx *gin.Context) {
 
 	if err := h.userStore.Upsert(ctx.Request.Context(), u); err != nil {
 		h.logger.Error("user upsert failed", zap.Error(err), zap.String("login", login))
-		ctx.JSON(http.StatusServiceUnavailable, gin.H{
-			"message": "service temporary unavailable",
-			"success": false,
-			"data":    nil,
-			"error": gin.H{
-				"message": "service temporary unavailable",
-				"code":    "SERVICE_TEMP_UNAVAILABLE",
+		ctx.JSON(http.StatusServiceUnavailable, dto.Response[any]{
+			Message: "service temporary unavailable",
+			Success: false,
+			Data:    nil,
+			Error: &dto.ErrorResponse{
+				Message: "service temporary unavailable",
+				Code:    dto.SERVICE_TEMP_UNAVAILABLE,
 			},
 		})
 		return
@@ -250,13 +251,13 @@ func (h *AuthHandler) HandleCallback(ctx *gin.Context) {
 	sessionToken, err := h.generateJWT(u)
 	if err != nil {
 		h.logger.Error("jwt generation failed", zap.Error(err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "something unexpected happened",
-			"success": false,
-			"data":    nil,
-			"error": gin.H{
-				"message": "something unexpected happened",
-				"code":    "INTERNAL_SERVER_ERROR",
+		ctx.JSON(http.StatusInternalServerError, dto.Response[any]{
+			Message: "something unexpected happened",
+			Success: false,
+			Data:    nil,
+			Error: &dto.ErrorResponse{
+				Message: "something unexpected happened",
+				Code:    dto.INTERNAL_SERVER_ERROR,
 			},
 		})
 		return
